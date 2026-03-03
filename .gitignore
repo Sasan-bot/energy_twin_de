@@ -1,0 +1,67 @@
+# ==========================================
+# 1. PYTHON & VIRTUAL ENVIRONMENTS
+# ==========================================
+# Ignore the virtual environment folder (it has thousands of files)
+venv/
+.venv/
+env/
+# Ignore compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ==========================================
+# 2. DATA & MACHINE LEARNING (CRITICAL)
+# ==========================================
+# GitHub blocks files over 100MB. Never push raw data or models.
+data/*.csv
+data/*.json
+*.csv
+*.xlsx
+# Ignore trained AI models (we will save these later)
+*.pkl
+*.joblib
+*.model
+# Ignore generated plots from EDA
+*.png
+*.jpg
+*.pdf
+
+# ==========================================
+# 3. JUPYTER NOTEBOOKS
+# ==========================================
+# Ignore checkpoint files created by Jupyter
+.ipynb_checkpoints/
+
+# ==========================================
+# 4. SECRETS & CLOUD (CRITICAL)
+# ==========================================
+# NEVER push your .env file containing OpenAI or Azure API keys!
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ==========================================
+# 5. FLUTTER & DART (For your App later)
+# ==========================================
+# Ignore Flutter build files and caches
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.pub-cache/
+app/.pub/
+app/**/*.log
+
+# ==========================================
+# 6. OS & IDE HIDDEN FILES
+# ==========================================
+# You are on a Mac, so this stops Mac from uploading folder settings
+.DS_Store
+.AppleDouble
+.LSOverride
+# VS Code / PyCharm settings
+.vscode/
+.idea/
