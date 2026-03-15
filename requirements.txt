@@ -1,0 +1,8 @@
+python-dotenv
+matplotlib
+numpy
+requests
+pandas
+xgboost
+scikit-learn
+opencv-python
