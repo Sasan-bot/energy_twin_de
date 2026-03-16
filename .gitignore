@@ -1,2 +1,57 @@
-.env
+# ==========================================
+# 1. PYTHON & VIRTUAL ENVIRONMENTS
+# ==========================================
+venv/
+.venv/
+env/
 __pycache__/
+*.py[cod]
+*$py.class
+
+# ==========================================
+# 2. DATA & MACHINE LEARNING (CRITICAL)
+# ==========================================
+data/*.csv
+data/*.json
+*.csv
+*.xlsx
+*.pkl
+*.joblib
+*.model
+*.png
+*.jpg
+*.pdf
+
+# ==========================================
+# 3. JUPYTER NOTEBOOKS
+# ==========================================
+.ipynb_checkpoints/
+
+# ==========================================
+# 4. SECRETS & CLOUD (CRITICAL)
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ==========================================
+# 5. FLUTTER & DART
+# ==========================================
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.pub-cache/
+app/.pub/
+app/**/*.log
+
+# ==========================================
+# 6. OS & IDE HIDDEN FILES
+# ==========================================
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode/
+.idea/
