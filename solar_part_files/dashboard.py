@@ -1,78 +1,138 @@
-import matplotlib.pyplot as plt
-import numpy as np
+import dash
+from dash import dcc, html
+import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+import config
 
-def show_professional_dashboard(analysis):
-    """
-    UI/UX Layer: Strategic Decision Support System v2.0
-    Combines technical precision with financial transparency.
-    """
-    plt.style.use('dark_background')
-    fig = plt.figure(figsize=(16, 12)) # Slightly taller to fit the Roadmap
+def create_professional_dashboard(analysis):
+    app = dash.Dash(__name__, external_stylesheets=[
+        dbc.themes.CYBORG,
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"
+    ])
     
-    fig.suptitle(f"SOLAR STRATEGY REPORT: ENERGY-TWIN 2026\nSystem Capacity: {analysis['capacity_kwp']:.1f} kWp", 
-                 fontsize=22, fontweight='bold', color='#00FFCC', y=0.98)
+    GLASS_STYLE = {
+        "background": "rgba(25, 25, 25, 0.75)",
+        "backdropFilter": "blur(15px)",
+        "borderRadius": "20px",
+        "border": "1px solid rgba(255, 255, 255, 0.1)",
+        "padding": "25px",
+        "boxShadow": "0 8px 32px 0 rgba(0, 0, 0, 0.8)",
+        "height": "100%"
+    }
 
-    # --- 1. Energy Flow (Donut Chart) ---
-    ax1 = plt.subplot2grid((3, 3), (0, 0))
-    sc_rate = analysis['no_battery']['sc_rate']
-    ax1.pie([sc_rate, 100 - sc_rate], labels=['Used', 'Export'], colors=['#00FFCC', '#333333'], 
-            autopct='%1.0f%%', startangle=90, pctdistance=0.75, textprops={'color':"w", 'weight':'bold'})
-    ax1.add_artist(plt.Circle((0,0), 0.70, fc='#000000'))
-    ax1.set_title(f"Self-Consumption: {sc_rate:.1f}%", pad=15)
+    def create_donut(value, color):
+        fig = go.Figure(go.Pie(
+            values=[value, 100-value],
+            hole=0.75,
+            marker_colors=[color, "rgba(255,255,255,0.05)"],
+            textinfo='none',
+            hoverinfo='none'
+        ))
+        fig.update_layout(
+            showlegend=False,
+            margin=dict(t=0, b=0, l=0, r=0),
+            paper_bgcolor='rgba(0,0,0,0)',
+            height=85, width=85, 
+            annotations=[dict(text=f"{int(value)}%", x=0.5, y=0.5, font_size=14, font_color="white", showarrow=False)]
+        )
+        return fig
 
-    # --- 2. Financial Strategy (Bar Chart) ---
-    ax2 = plt.subplot2grid((3, 3), (0, 1), colspan=2)
-    scenarios = ['Standard', 'With Battery']
-    paybacks = [analysis['no_battery']['payback'], analysis['with_battery']['payback']]
-    invests = [analysis['no_battery']['invest'], analysis['with_battery']['invest']]
-    bars = ax2.bar(scenarios, paybacks, color=['#555555', '#00FFCC'], alpha=0.8, width=0.4)
-    ax2.set_ylabel("Years to ROI")
-    ax2.set_ylim(0, max(paybacks) * 1.4) 
-    for i, bar in enumerate(bars):
-        yval = bar.get_height()
-        ax2.text(bar.get_x() + bar.get_width()/2, yval + 0.6, 
-                 f"{yval:.1f} Yrs\n({invests[i]:,.0f} €)", ha='center', color='w', fontweight='bold')
+    app.layout = html.Div([
+        dbc.Container([
+            # 1. HEADER SECTION
+            dbc.Row([
+                dbc.Col([
+                    html.H2("ENERGY-TWIN: AI SOLAR STRATEGY", className="mt-4 mb-0", style={"letterSpacing": "3px", "fontWeight": "800"}),
+                    html.P("Real-time Solar Simulation & Economic Audit | Bonn Region v2.0", className="text-muted mb-4")
+                ], width=12)
+            ]),
 
-    # --- 3. Eco & Hardware Box ---
-    ax3 = plt.subplot2grid((3, 3), (1, 0))
-    ax3.axis('off')
-    trees = int(analysis['co2_saved'] * 80) 
-    info_text = (f"🌿 ECO IMPACT\n\nCO2 Saved: {analysis['co2_saved']:.2f} T/Y\n"
-                 f"Trees: {trees} 🌳\n-------------------\n"
-                 f"Panels: {analysis['num_panels']}\nYield: {analysis['yield']:,.0f} kWh/Y")
-    ax3.text(0.5, 0.5, info_text, transform=ax3.transAxes, fontsize=12, ha='center', va='center',
-             bbox=dict(boxstyle='round,pad=1.5', facecolor='#0A2A12', edgecolor='#00FFCC', lw=2))
+            # 2. TOP KPI STRIP (The 3 Strategic Boxes)
+            dbc.Row([
+                # --- LEFT BOX: Financial Freedom (UPDATED FOCUS) ---
+                dbc.Col(dbc.Card([
+                    html.Div([
+                        html.I(className="bi bi-cash-stack", style={"fontSize": "1.5rem", "color": "#00ff88"}),
+                        html.Span(" FINANCIAL FREEDOM", style={"marginLeft": "10px", "letterSpacing": "1px", "color": "#888"})
+                    ], className="mb-3"),
+                    
+                    # 20-Year Profit: Bold & Neon (The New Hero)
+                    html.Div([
+                        html.Small("20-YEAR NET PROFIT", style={"color": "#888", "fontSize": "0.75rem", "display": "block", "letterSpacing": "1px"}),
+                        html.H3(f"{analysis['financials']['twenty_year_profit']:,.0f}€", 
+                                style={"color": "#00ff88", "fontWeight": "900", "fontSize": "2.2rem", "marginTop": "5px", "textShadow": "0 0 15px rgba(0,255,136,0.4)"}),
+                    ], className="mb-3"),
 
-    # --- 4. Mobility Sector (Free EV Range) ---
-    ax4 = plt.subplot2grid((3, 3), (1, 1))
-    ax4.axis('off')
-    ev_km = (analysis['yield'] * (sc_rate/100)) / 0.15 
-    mobility_text = (f"🚗 SOLAR MOBILITY\n\nFree EV Range:\n{ev_km:,.0f} KM / Year\n"
-                     f"Fuel Saved: ~{(ev_km/100)*1.8:.0f} €")
-    ax4.text(0.5, 0.5, mobility_text, transform=ax4.transAxes, fontsize=12, ha='center', va='center',
-             bbox=dict(boxstyle='round,pad=1.5', facecolor='#111111', edgecolor='#FFCC00', lw=2))
+                    # Annual & Monthly as secondary info
+                    html.Div([
+                        html.P(f"Annual Savings: {analysis['financials']['annual_savings']:,.0f}€", className="mb-0", style={"fontSize": "1rem", "color": "#ddd"}),
+                        html.P(f"Monthly Relief: {analysis['financials']['monthly_relief']}€", className="text-muted small"),
+                    ]),
+                    
+                    html.Hr(style={"borderColor": "rgba(255,255,255,0.1)", "margin": "10px 0"}),
+                    html.Div(f"ROI: {analysis['financials']['payback']} Years", style={"fontSize": "0.85rem", "color": "#00ff88", "fontWeight": "bold", "letterSpacing": "1px"})
+                ], style=GLASS_STYLE), width=4),
 
-    # --- 5. Project Scorecard (Radar) ---
-    ax5 = fig.add_subplot(3, 3, 6, polar=True)
-    labels = ['Yield', 'ROI', 'Eco']
-    values = [85, 70, 92] # Example scores
-    angles = np.linspace(0, 2*np.pi, len(labels), endpoint=False).tolist()
-    values += values[:1]; angles += angles[:1]
-    ax5.plot(angles, values, color='#00FFCC'); ax5.fill(angles, values, alpha=0.3)
-    ax5.set_xticks(angles[:-1]); ax5.set_xticklabels(labels, size=8)
+                # MIDDLE BOX: System Blueprint
+                dbc.Col(dbc.Card([
+                    html.Div([
+                        html.I(className="bi bi-house-gear", style={"fontSize": "1.5rem", "color": config.DASH_ACCENT_NEON}),
+                        html.Span(" SYSTEM BLUEPRINT", style={"marginLeft": "10px", "letterSpacing": "1px", "color": "#888"})
+                    ], className="mb-3"),
+                    html.H4(f"{analysis['num_panels']} High-Efficiency Panels", style={"fontWeight": "bold"}),
+                    html.P(f"Capacity: {analysis['capacity_kwp']} kWp", style={"fontSize": "0.85rem", "color": config.DASH_ACCENT_NEON}),
+                    html.Div([
+                        dbc.Row([
+                            dbc.Col([dcc.Graph(figure=create_donut(analysis['strategy']['autarky_rate'], "#d4ff00"), config={'displayModeBar': False}), 
+                                     html.Small("Independence", className="d-block text-center", style={"fontSize": "0.7rem", "color": "#d4ff00"})], width=4),
+                            dbc.Col([dcc.Graph(figure=create_donut(analysis['strategy']['location_score'], "#00d4ff"), config={'displayModeBar': False}), 
+                                     html.Small("Sun Stability", className="d-block text-center", style={"fontSize": "0.7rem", "color": "#00d4ff"})], width=4),
+                            dbc.Col([dcc.Graph(figure=create_donut(analysis['strategy']['battery_impact'], "#ff00d4"), config={'displayModeBar': False}), 
+                                     html.Small("Battery Flow", className="d-block text-center", style={"fontSize": "0.7rem", "color": "#ff00d4"})], width=4),
+                        ])
+                    ], style={"marginTop": "5px"})
+                ], style={**GLASS_STYLE, "border": f"1px solid {config.DASH_ACCENT_NEON}"}), width=4),
 
-    # --- 6. ACQUISITION ROADMAP (The "Closer") ---
-    ax6 = plt.subplot2grid((3, 3), (2, 0), colspan=3)
-    ax6.axis('off')
-    invest = analysis['no_battery']['invest']
-    monthly_gain = analysis['no_battery']['savings'] / 12
-    loan_pmt = (invest * 1.25) / 120 
-    roadmap = (f"--- STRATEGIC PURCHASE OPTIONS ---\n"
-               f"CASH BUY: {invest:,.0f} € upfront | Gain: +{monthly_gain:.0f} €/mo\n"
-               f"SMART LOAN: 0 € upfront | Payment: ~{loan_pmt:.0f} €/mo | Solar Income: ~{monthly_gain:.0f} €/mo\n"
-               f">> AI VERDICT: Solar income covers { (monthly_gain/loan_pmt)*100 :.0f}% of your loan!")
-    ax6.text(0.5, 0.5, roadmap, transform=ax6.transAxes, fontsize=13, ha='center', va='center',
-             color='#00FFCC', fontweight='bold', bbox=dict(boxstyle='round,pad=1', facecolor='#111111'))
+                # RIGHT BOX: Environmental Legacy
+                dbc.Col(dbc.Card([
+                    html.Div([
+                        html.I(className="bi bi-tree", style={"fontSize": "1.5rem", "color": "#00d4ff"}),
+                        html.Span(" ENVIRONMENTAL IMPACT", style={"marginLeft": "10px", "letterSpacing": "1px", "color": "#888"})
+                    ], className="mb-3"),
+                    html.H3(f"{analysis['environment']['co2_saved']} Tons CO2", style={"color": "#00d4ff", "fontWeight": "bold"}),
+                    html.P(f"♻️ Equivalent to {analysis['environment']['tree_count']} trees/year", style={"fontSize": "1.1rem", "marginTop": "10px"}),
+                    html.Hr(style={"borderColor": "rgba(255,255,255,0.1)", "margin": "10px 0"}),
+                    html.Span(f"Status: {analysis['environment']['eco_grade']}", className="badge bg-info", style={"letterSpacing": "1px"})
+                ], style=GLASS_STYLE), width=4),
+            ], className="mb-4"),
 
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.show()
+            # 3. SPATIAL & ADVISORY SECTION
+            dbc.Row([
+                dbc.Col([
+                    html.Div([
+                        html.H6("🛰️ ANALYZED ROOF BLUEPRINT", style={"color": "#888", "marginBottom": "15px", "fontSize": "0.8rem"}),
+                        html.Img(src="/assets/analyzed_roof.png", style={"width": "100%", "borderRadius": "15px", "border": "1px solid #333"}),
+                        html.Div([
+                            html.Span(f"Total Area: {analysis.get('roof_area', 0)} m²", className="badge bg-primary", style={"fontSize": "0.8rem"})
+                        ], className="mt-3", style={"textAlign": "center"})
+                    ], style=GLASS_STYLE)
+                ], width=5),
+
+                dbc.Col([
+                    html.Div([
+                        html.H5([html.I(className="bi bi-robot", style={"marginRight": "10px", "color": config.DASH_ACCENT_NEON}), "AI STRATEGIC ADVISORY"]),
+                        html.Hr(style={"borderColor": "rgba(255,255,255,0.1)"}),
+                        html.Ul([
+                            html.Li([
+                                html.I(className="bi bi-shield-check", style={"color": config.DASH_ACCENT_NEON, "marginRight": "10px"}),
+                                html.Span(tip)
+                            ], style={"listStyleType": "none", "marginBottom": "15px", "fontSize": "0.95rem", "color": "#ddd"}) 
+                            for tip in analysis['strategic_advice']
+                        ], style={"paddingLeft": "0"})
+                    ], style=GLASS_STYLE)
+                ], width=7),
+            ])
+        ], fluid=True, style={"backgroundColor": "#080808", "minHeight": "100vh", "padding": "20px 40px"})
+    ])
+
+    return app

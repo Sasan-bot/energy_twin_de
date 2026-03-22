@@ -1,97 +1,134 @@
 import requests
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
-import config  # Centralized configuration for global constants
+import config
+import os
 
-def fetch_historical_weather(lat, lon, years=3):
+def get_coordinates_from_address(address, mapbox_token):
     """
-    Fetches multi-year historical weather data from Open-Meteo Archive API.
-    Essential for training the XGBoost ML Engine with real-world climate patterns.
+    Geocoding Layer: Converts address to precise coordinates via Mapbox.
+    """
+    # Professional English comments: Mapbox API integration for DE region
+    url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{address}.json"
+    params = {
+        "access_token": mapbox_token, 
+        "limit": 1, 
+        "country": "DE", 
+        "types": "address,postcode,place"
+    }
     
-    Args:
-        lat (float): Latitude of the target location.
-        lon (float): Longitude of the target location.
-        years (int): Number of years to look back (linked to config.HISTORY_YEARS).
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if 'features' in data and data['features']:
+            lon, lat = data['features'][0]['center']
+            print(f"📍 Location Verified: [{lat}, {lon}]")
+            return lat, lon
+        print("⚠️ Address not found in Germany.")
+        return None, None
+    except Exception as e:
+        print(f"❌ Geocoding Error: {e}")
+        return None, None
+
+def fetch_historical_weather(lat, lon, years=5):
     """
-    # Open-Meteo Archive has a 2-day delay for finalized historical records.
-    # We calculate the window based on the current date.
+    Climate Intelligence Layer: Open-Meteo Archive API.
+    Fetches 5 years of historical radiation data for precision ML training.
+    """
     end_date = (datetime.now() - timedelta(days=2)).date()
     start_date = end_date - timedelta(days=years * 365)
     
-    # API Parameters selection:
-    # 1. Shortwave Radiation: Direct solar energy hitting the panels.
-    # 2. Cloud Cover: The primary factor reducing solar efficiency.
-    # 3. Temperature: High ambient heat can slightly reduce PV efficiency.
-    # 4. Snowfall: Physical obstruction that can temporarily zero out production.
-    url = (
-        f"https://archive-api.open-meteo.com/v1/archive?"
-        f"latitude={lat}&longitude={lon}&"
-        f"start_date={start_date}&end_date={end_date}&"
-        f"hourly=temperature_2m,shortwave_radiation,snowfall,cloud_cover&"
-        f"timezone=Europe%2FBerlin"
-    )
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": start_date,
+        "end_date": end_date,
+        "hourly": "temperature_2m,shortwave_radiation,direct_radiation,diffuse_radiation,cloud_cover",
+        "timezone": "Europe/Berlin"
+    }
+    
+    url = "https://archive-api.open-meteo.com/v1/archive"
     
     try:
-        response = requests.get(url, timeout=20)
-        response.raise_for_status() # Check for HTTP errors
+        response = requests.get(url, params=params, timeout=20)
+        response.raise_for_status()
         data = response.json()
         
-        # Structure the hourly data into a Pandas DataFrame
+        # Structure the data for solar_engine processing
         df = pd.DataFrame(data['hourly'])
         df['time'] = pd.to_datetime(df['time'])
         
-        # PERSISTENCE LAYER: Save the data using the filename defined in config.py.
-        # This ensures the ML Engine and Data Fetcher are always synced.
+        # Save to local cache for ML Engine and Solar Engine
         df.to_csv(config.HISTORICAL_DATA_FILE, index=False)
-        
-        print(f"✅ SUCCESS: {len(df)} records saved to {config.HISTORICAL_DATA_FILE}")
+        print(f"✅ Weather Data Synchronized: {len(df)} hourly records cached.")
         return df
     except Exception as e:
-        print(f"❌ Data Fetching Error: {e}")
+        print(f"❌ Weather API Error: {e}")
         return None
 
 def fetch_smard_prices():
     """
-    Fetches real-time German electricity market prices from SMARD.de.
-    Used for dynamic financial modeling and ROI calculations.
+    Economic Intelligence Layer: SMARD (Bundesnetzagentur) API.
+    Updates Grid Price and Feed-in Tariff based on real-time market trends.
     """
+    print("📡 Connecting to SMARD Market Data...")
     try:
-        # Step 1: Get the latest available timestamp index
+        # Get the latest available timestamp for DE Day-ahead prices
         index_url = "https://www.smard.de/app/chart_data/4169/DE/index_hour.json"
-        last_ts = requests.get(index_url).json()['timestamps'][-1]
+        ts_res = requests.get(index_url, timeout=10)
+        ts_res.raise_for_status()
+        last_ts = ts_res.json()['timestamps'][-1]
         
-        # Step 2: Fetch the hourly price series for that timestamp
+        # Fetch the hourly series for the current period
         price_url = f"https://www.smard.de/app/chart_data/4169/DE/4169_DE_hour_{last_ts}.json"
-        series = requests.get(price_url).json()['series']
+        series = requests.get(price_url, timeout=10).json()['series']
         
-        # Convert MWh price to kWh price (divide by 1000)
-        return [val[1] / 1000 for val in series[-24:]]
+        # Technical Fix: Extract values and filter out Nones
+        recent_prices = [float(val[1]) for val in series[-720:] if val[1] is not None]
+        
+        if not recent_prices:
+            raise ValueError("Empty price series from SMARD")
+            
+        # Calculate the 30-day average market price (per MWh)
+        avg_market_price_mwh = np.mean(recent_prices)
+        
+        # Standard Grid Price calculation: Market + Grid Fees + Taxes (approx 0.185€ in DE)
+        config.AVG_GRID_PRICE = round((avg_market_price_mwh / 1000) + 0.22, 3) 
+        
+        # Dynamic Feed-in Tariff based on EEG 2026 standards
+        config.FEED_IN_TARIFF = 0.082 if config.AVG_GRID_PRICE > 0.40 else 0.075
+        
+        print(f"✅ Market Indices Updated: Grid @ {config.AVG_GRID_PRICE}€ | Feed-in @ {config.FEED_IN_TARIFF}€")
+        return True
     except Exception as e:
-        # Fallback to config default if SMARD API is unreachable
-        print(f"⚠️ Price Fetching Failed: Using fallback ({config.AVG_GRID_PRICE} €/kWh)")
-        return [config.AVG_GRID_PRICE] * 24
+        print(f"⚠️ SMARD Sync Warning: {e}. Utilizing Config Defaults.")
+        return False
 
 def fetch_satellite_image(lat, lon, mapbox_token):
     """
-    Retrieves high-resolution satellite imagery from Mapbox Static API.
-    Standardized at Zoom 19 for a consistent pixel-to-meter ratio.
+    Spatial Layer: Mapbox Static Satellite API.
+    Captures high-res roof imagery for the AI Roof Analyser.
     """
-    # 800x800 resolution ensures we have a large enough canvas for roof mapping
-    url = (
-        f"https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/"
-        f"{lon},{lat},19,0/800x800?access_token={mapbox_token}"
-    )
+    # Optimized for Zoom Level 19 (Highest detail for roof detection)
+    url = f"https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/{lon},{lat},19,0/800x800?access_token={mapbox_token}"
+    filename = "assets/roof_top.png" # Fixed path for dashboard assets
+    
     try:
+        # Pre-cleanup: Ensure fresh imagery for each session
+        if os.path.exists(filename):
+            os.remove(filename)
+        
+        # Fetch high-fidelity satellite tile
         response = requests.get(url, timeout=15)
-        if response.status_code == 200:
-            filename = "roof_top.png"
-            with open(filename, "wb") as f:
-                f.write(response.content)
-            print(f"✅ Mapbox Satellite image captured and saved as {filename}")
-            return filename
-        else:
-            print(f"❌ Mapbox API Error: Status {response.status_code}")
-            return None
+        response.raise_for_status()
+        
+        with open(filename, "wb") as f:
+            f.write(response.content)
+            
+        print(f"✅ Satellite Frame Captured: {filename}")
+        return filename
     except Exception as e:
-        print(f"❌ Connection Error during image retrieval: {e}")
+        print(f"❌ Imagery Retrieval Failed: {e}")
         return None
