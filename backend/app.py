@@ -1,8 +1,11 @@
 from flask import Flask, request, jsonify
+import requests
 from flask_cors import CORS
 import joblib
 import pandas as pd
 import os
+import math
+from datetime import datetime
 
 app = Flask(__name__)
 # Enable CORS so your Flutter app can make requests to this API safely
@@ -141,6 +144,89 @@ def simulate_investment():
             "smart_heatpump_cost_eur": round(smart_hp_cost, 2),
             "ai_annual_savings_eur": round(annual_savings, 2),
             "estimated_roi_years": round(roi_years, 1),
+            "status": "success"
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+@app.route('/predict_tomorrow', methods=['GET'])
+def predict_tomorrow():
+    try:
+        if model is None:
+            return jsonify({"error": "Model not loaded on server."}), 500
+
+        # 1. Fetch live weather forecast for Frankfurt/Germany from Open-Meteo
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": 50.1109,
+            "longitude": 8.6821, # Central Germany / Frankfurt
+            "hourly": ["wind_speed_100m", "shortwave_radiation"],
+            "timezone": "Europe/Berlin",
+            "forecast_days": 2 # Get today and tomorrow
+        }
+        
+        weather_res = requests.get(url, params=params)
+        weather_res.raise_for_status()
+        weather_data = weather_res.json()
+
+        # 2. Extract exactly tomorrow's 24 hours (hours 24 to 47 in the array)
+        times = weather_data['hourly']['time'][24:48]
+        wind_speeds = weather_data['hourly']['wind_speed_100m'][24:48]
+        solar_rads = weather_data['hourly']['shortwave_radiation'][24:48]
+        
+        # Get date context for XGBoost
+        tomorrow_date = datetime.strptime(times[0][:10], "%Y-%m-%d")
+        month = tomorrow_date.month
+        day_of_week = tomorrow_date.weekday()
+        is_weekend = 1 if day_of_week >= 5 else 0
+
+        predictions = []
+
+        # 3. Translate Weather to Grid MWh and Feed to AI
+        for hour in range(24):
+            # Scale weather to German Grid MWh (Smart Heuristics based on real capacities)
+            # Max German solar radiation ~ 800 W/m2. Max Grid Solar ~ 40,000 MWh. Multiplier ~ 50.
+            solar = max(0, solar_rads[hour] * 50) 
+            
+            # Wind power scales roughly with speed. (20km/h ~ 25,000 MWh as a proxy)
+            wind_on = min(40000, max(0, (wind_speeds[hour] / 20.0) * 25000))
+            wind_off = wind_on * 0.25 # Offshore is usually steadier, rough 25% proxy
+            
+            # Load profile (Base grid usage: higher in day, lower at night)
+            load = 50000 + (10000 * math.sin(math.pi * (hour - 6) / 12)) if 6 <= hour <= 18 else 45000
+            
+            total_renewable = solar + wind_on + wind_off
+            renewable_ratio = total_renewable / load if load > 0 else 0
+
+            # Build the exact dataframe row XGBoost expects
+            df_hour = pd.DataFrame([{
+                'Electricity_Load': load,
+                'Generation_Solar': solar,
+                'Generation_Wind_Onshore': wind_on,
+                'Generation_Wind_Offshore': wind_off,
+                'Total_Renewable': total_renewable,
+                'Renewable_Ratio': renewable_ratio,
+                'hour': hour,
+                'day_of_week': day_of_week,
+                'month': month,
+                'is_weekend': is_weekend
+            }])
+
+            # Enforce strict column order
+            expected_cols = [
+                'Electricity_Load', 'Generation_Solar', 'Generation_Wind_Onshore', 
+                'Generation_Wind_Offshore', 'Total_Renewable', 'Renewable_Ratio', 
+                'hour', 'day_of_week', 'month', 'is_weekend'
+            ]
+            df_hour = df_hour[expected_cols]
+
+            # Let XGBoost make the real prediction!
+            price = float(model.predict(df_hour)[0])
+            predictions.append(price)
+
+        return jsonify({
+            "date": tomorrow_date.strftime("%Y-%m-%d"),
+            "hourly_prices": predictions,
             "status": "success"
         }), 200
 
